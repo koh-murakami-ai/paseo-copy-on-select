@@ -6,6 +6,17 @@ A Paseo plugin that automatically copies highlighted text to the clipboard when 
 
 ## Install
 
+### From the Paseo app
+
+1. Open **Settings → Plugins**.
+2. Click **Install from source**.
+3. Enter `git:koh-murakami-ai/paseo-copy-on-select` (or the GitHub URL `https://github.com/koh-murakami-ai/paseo-copy-on-select`).
+4. Click **Install plugin**.
+
+![Install Copy on Select in Paseo](assets/install.gif)
+
+### From the CLI
+
 ```bash
 paseo plugin add git:koh-murakami-ai/paseo-copy-on-select
 ```
