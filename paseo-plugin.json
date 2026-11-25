@@ -2,6 +2,7 @@
   "id": "copy-on-select",
   "name": "Copy on Select",
   "description": "Automatically copies highlighted text to the clipboard when you release the mouse button.",
+  "media": ["assets/demo.gif"],
   "requirements": {
     "paseo": ">=0.17.0"
   }

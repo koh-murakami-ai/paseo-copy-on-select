@@ -2,6 +2,8 @@
 
 A Paseo plugin that automatically copies highlighted text to the clipboard when you release the mouse button (similar to copy-on-select in terminals and Claude Code).
 
+![Copy on Select demo](assets/demo.gif)
+
 ## Install
 
 ```bash
