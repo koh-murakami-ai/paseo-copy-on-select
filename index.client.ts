@@ -66,7 +66,18 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export default function contribute(_client: PluginClientContext) {
+function refocusActiveComposer(client: PluginClientContext): void {
+  try {
+    const [composer] = client.composers({ focused: true });
+    if (composer) {
+      void composer.focus().catch(() => {});
+    }
+  } catch {
+    // Ignore if no active composer is available.
+  }
+}
+
+export default function contribute(client: PluginClientContext) {
   if (Platform.OS !== "web" || typeof document === "undefined") {
     return () => {};
   }
@@ -99,7 +110,10 @@ export default function contribute(_client: PluginClientContext) {
       lastCopiedAt = now;
 
       void copyText(text).then((ok) => {
-        if (ok) showCopiedToast();
+        if (ok) {
+          showCopiedToast();
+          refocusActiveComposer(client);
+        }
       });
     }, 0);
   };
