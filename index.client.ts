@@ -9,7 +9,7 @@ function isEditableElement(target: EventTarget | null): boolean {
   }
   const el = target as HTMLElement;
   return Boolean(
-    el.closest('input, textarea, [contenteditable="true"], [contenteditable=""]'),
+    el.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .xterm'),
   );
 }
 
@@ -66,17 +66,6 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function refocusActiveComposer(client: PluginClientContext): void {
-  try {
-    const [composer] = client.composers({ focused: true });
-    if (composer) {
-      void composer.focus().catch(() => {});
-    }
-  } catch {
-    // Ignore if no active composer is available.
-  }
-}
-
 export default function contribute(client: PluginClientContext) {
   if (Platform.OS !== "web" || typeof document === "undefined") {
     return () => {};
@@ -110,18 +99,38 @@ export default function contribute(client: PluginClientContext) {
       lastCopiedAt = now;
 
       void copyText(text).then((ok) => {
-        if (ok) {
-          showCopiedToast();
-          refocusActiveComposer(client);
-        }
+        if (ok) showCopiedToast();
       });
     }, 0);
   };
 
+  // Keep the text highlight intact after copying; if the user presses Ctrl+V / Cmd+V
+  // without clicking the composer first, paste directly into the active session composer.
+  const onPaste = (event: ClipboardEvent) => {
+    if (isEditableElement(event.target) || isEditableElement(document.activeElement)) {
+      return;
+    }
+
+    const text = event.clipboardData?.getData("text/plain");
+    if (!text) return;
+
+    try {
+      const [composer] = client.composers({ focused: true });
+      if (!composer) return;
+      event.preventDefault();
+      composer.insertText(text);
+      void composer.focus().catch(() => {});
+    } catch {
+      // Ignore if no active composer is available.
+    }
+  };
+
   document.addEventListener("mouseup", onMouseUp, true);
+  document.addEventListener("paste", onPaste, true);
 
   return () => {
     document.removeEventListener("mouseup", onMouseUp, true);
+    document.removeEventListener("paste", onPaste, true);
     const toast = document.getElementById(TOAST_ID);
     if (toast) toast.remove();
   };
