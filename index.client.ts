@@ -2,6 +2,8 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { Platform } from "react-native";
 
 const TOAST_ID = "paseo-copy-on-select-toast";
+const STYLE_ID = "paseo-copy-on-select-style";
+const HIGHLIGHT_NAME = "paseo-copy-on-select";
 
 function isEditableElement(target: EventTarget | null): boolean {
   if (!target || typeof (target as HTMLElement).closest !== "function") {
@@ -11,6 +13,53 @@ function isEditableElement(target: EventTarget | null): boolean {
   return Boolean(
     el.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .xterm'),
   );
+}
+
+const HIGHLIGHT_BG = "rgba(59, 130, 246, 0.32)";
+
+function ensureHighlightStyle(): void {
+  if (typeof document === "undefined" || !document.head) return;
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.appendChild(style);
+  }
+  style.textContent = [
+    `::selection { background-color: ${HIGHLIGHT_BG} !important; }`,
+    `.xterm ::selection, .cm-line::selection, .cm-line ::selection { background-color: transparent !important; }`,
+    `::highlight(${HIGHLIGHT_NAME}) { background-color: ${HIGHLIGHT_BG}; color: inherit; }`,
+  ].join("\n");
+}
+
+function setPersistentHighlight(selection: Selection): boolean {
+  const cssHighlights = (globalThis.CSS as { highlights?: Map<string, unknown> } | undefined)
+    ?.highlights;
+  const HighlightCtor = (
+    globalThis as { Highlight?: new (...ranges: AbstractRange[]) => unknown }
+  ).Highlight;
+
+  if (!cssHighlights || !HighlightCtor || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const ranges: Range[] = [];
+  for (let i = 0; i < selection.rangeCount; i++) {
+    ranges.push(selection.getRangeAt(i).cloneRange());
+  }
+  if (ranges.length === 0) return false;
+
+  ensureHighlightStyle();
+  cssHighlights.set(HIGHLIGHT_NAME, new HighlightCtor(...ranges));
+  return true;
+}
+
+function clearPersistentHighlight(): void {
+  const cssHighlights = (globalThis.CSS as { highlights?: Map<string, unknown> } | undefined)
+    ?.highlights;
+  if (cssHighlights) {
+    cssHighlights.delete(HIGHLIGHT_NAME);
+  }
 }
 
 function showCopiedToast(): void {
@@ -71,8 +120,31 @@ export default function contribute(client: PluginClientContext) {
     return () => {};
   }
 
+  ensureHighlightStyle();
+
   let lastCopiedText = "";
   let lastCopiedAt = 0;
+
+  const focusActiveComposer = () => {
+    try {
+      const [composer] = client.composers({ focused: true });
+      if (!composer) return;
+      window.getSelection()?.removeAllRanges();
+      void composer.focus().catch(() => {});
+    } catch {
+      // Ignore if no active composer is available.
+    }
+  };
+
+  const onMouseDown = () => {
+    clearPersistentHighlight();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      clearPersistentHighlight();
+    }
+  };
 
   const onMouseUp = (event: MouseEvent) => {
     if (event.button !== 0) return;
@@ -98,14 +170,18 @@ export default function contribute(client: PluginClientContext) {
       lastCopiedText = text;
       lastCopiedAt = now;
 
+      const highlighted = setPersistentHighlight(selection);
+
       void copyText(text).then((ok) => {
         if (ok) showCopiedToast();
+        if (highlighted) {
+          focusActiveComposer();
+        }
       });
     }, 0);
   };
 
-  // Keep the text highlight intact after copying; if the user presses Ctrl+V / Cmd+V
-  // without clicking the composer first, paste directly into the active session composer.
+  // Fallback if CSS Custom Highlight API is unavailable or composer isn't focused yet.
   const onPaste = (event: ClipboardEvent) => {
     if (isEditableElement(event.target) || isEditableElement(document.activeElement)) {
       return;
@@ -125,12 +201,19 @@ export default function contribute(client: PluginClientContext) {
     }
   };
 
+  document.addEventListener("mousedown", onMouseDown, true);
+  document.addEventListener("keydown", onKeyDown, true);
   document.addEventListener("mouseup", onMouseUp, true);
   document.addEventListener("paste", onPaste, true);
 
   return () => {
+    document.removeEventListener("mousedown", onMouseDown, true);
+    document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
     document.removeEventListener("paste", onPaste, true);
+    clearPersistentHighlight();
+    const style = document.getElementById(STYLE_ID);
+    if (style) style.remove();
     const toast = document.getElementById(TOAST_ID);
     if (toast) toast.remove();
   };
